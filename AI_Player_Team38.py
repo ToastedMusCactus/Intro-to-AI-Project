@@ -4,6 +4,8 @@ import heapq
 import os
 from typing import Dict, List, Tuple, Optional
 from PIL import Image, ImageDraw, ImageFont
+from typing import Dict, List, Tuple
+from PIL import Image, ImageDraw, ImageFont
 from treelib import Tree
 
 from halma import check_legal_move, win_cells_all, random_bot, initial_pos
