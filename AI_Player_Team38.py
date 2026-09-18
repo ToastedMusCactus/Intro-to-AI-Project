@@ -1,9 +1,9 @@
 import math
 import random
 import heapq
-import graphviz
 import os
 from typing import Dict, List, Tuple
+from PIL import Image, ImageDraw, ImageFont
 from treelib import Tree
 
 from halma import check_legal_move, win_cells_all, random_bot, initial_pos
@@ -161,41 +161,34 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
 
         if visualize_tree and node_count < 300:
             node_count += 1
-            clean_id = move_str.replace("->", "_to_")
-            node_id = f"node_{node_count}_{clean_id}"
+            node_id = f"node_{node_count}_{move_str}"
             tree.create_node(move_str, node_id, parent="Start")
 
         if score < best_score:
             best_score = score
             best_move = (old_pos, new_pos)
 
-    """if visualize_tree and tree is not None:
-        try:
-            output_path = os.path.join(os.path.dirname(__file__), "Team38 Tree")
-            tree.to_graphviz().render(output_path, format="png", cleanup=True)
-            print("Tree exported successfully to Team38 Tree.png")
-        except Exception as e:
-            print(f"[Warning] Graphviz export failed ({e}). Rendering ASCII tree instead:")
-            tree.show()"""
-
     if visualize_tree and tree is not None:
         try:
-            # Add Graphviz bin folder directly to PATH for this execution
-            os.environ["PATH"] += os.pathsep + r"C:\Program Files\Graphviz\bin"
-            
-            # 1. treelib.to_graphviz() returns a string containing DOT code
-            dot_string = tree.to_graphviz()
-            
-            # 2. Convert the DOT string into a Graphviz Source object
-            src = graphviz.Source(dot_string)
-            
-            # 3. Render the file directly to your workspace folder
-            output_path = os.path.join(os.path.dirname(__file__), "Team38 Tree")
-            src.render(output_path, format="png", cleanup=True)
-            print(">>> SUCCESS: 'Team38 Tree.png' created in project folder! <<<")
+            font = ImageFont.load_default()
+            lines = []
+            for node_id in tree.expand_tree():
+                node = tree.get_node(node_id)
+                lines.append(f"{'  ' * tree.depth(node_id)}{node.tag}")
+
+            line_height = 18
+            image_width = max(320, max(len(line) for line in lines) * 8 + 20)
+            image = Image.new("RGB", (image_width, line_height * len(lines) + 20), "white")
+            draw = ImageDraw.Draw(image)
+            for index, line in enumerate(lines):
+                draw.text((10, 10 + index * line_height), line, fill="black", font=font)
+
+            output_path = os.path.join(os.path.dirname(__file__), "Team38 Tree.png")
+            image.save(output_path)
+            print("Tree exported successfully to Team38 Tree.png")
             
         except Exception as e:
-            print(f"[Warning] Graphviz export failed ({e}). Rendering ASCII tree instead:")
+            print(f"[Warning] Tree export failed ({e}). Rendering ASCII tree instead:")
             tree.show()
 
     if best_move is None:
