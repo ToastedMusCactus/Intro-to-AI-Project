@@ -161,7 +161,8 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
 
         if visualize_tree and node_count < 300:
             node_count += 1
-            node_id = f"node_{node_count}_{move_str}"
+            clean_id = move_str.replace("->", "_to_")
+            node_id = f"node_{node_count}_{clean_id}"
             tree.create_node(move_str, node_id, parent="Start")
 
         if score < best_score:
@@ -179,6 +180,9 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
 
     if visualize_tree and tree is not None:
         try:
+            # Add Graphviz bin folder directly to PATH for this execution
+            os.environ["PATH"] += os.pathsep + r"C:\Program Files\Graphviz\bin"
+            
             # 1. treelib.to_graphviz() returns a string containing DOT code
             dot_string = tree.to_graphviz()
             
