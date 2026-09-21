@@ -85,12 +85,20 @@ def _heuristic(state: tuple, player: int) -> int:
             dist(p1, w3) + dist(p2, w2) + dist(p3, w1)
         )
 
-    score = best_total_distance + (n_outside * 40)
+    starting_camp_penalty = 0 # To ensure we do not forfeit tie points based on the rule 
+    # "If no player has won after a set number of moves... Any player with pieces in another player's end zone at this point will lose..."
+    for p in piece_positions:
+        if p not in win_cells:
+            for other_player, camp_cells in win_cells_all.items():
+                if other_player != player and p in camp_cells:
+                    starting_camp_penalty += 20
+    
+    score = best_total_distance + (n_outside * 40) + starting_camp_penalty
     HEURISTIC_CACHE[cache_key] = score
     return score
 
 
-def _eval_scores(state: tuple) -> Tuple[int, int, int, int]:
+def _evaluate_scores(state: tuple) -> Tuple[int, int, int, int]:
     """Returns the "scores" of each player in a 4 element vector"""
     scores = []
     for p in range(1, 5):
@@ -133,11 +141,11 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
 ) -> Tuple[Tuple[int, int, int, int], Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
     """Recursive Max^n search for 4 players with repeated position pruning & branch ordering."""
     if play_depth == max_play_depth:
-        return _eval_scores(state), None
+        return _evaluate_scores(state), None
 
     state_key = (state, current_player)
     if state_key in visited:
-        return _eval_scores(state), None
+        return _evaluate_scores(state), None
     visited.add(state_key)
 
     moves = _get_legal_moves(state, current_player)
@@ -153,10 +161,7 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
 
     scored_moves = []
     for m in moves:
-        if m[0] in win_cells and state[m[0][0]][m[0][1]] == current_player:
-            if m[1] not in win_cells:
-                continue
-        
+         
         next_state = _apply_move(state, m[0], m[1], current_player)
         score = 1000 - _heuristic(next_state, current_player)
         scored_moves.append((score, m[0], m[1], next_state))
@@ -189,7 +194,7 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
                 break
 
     visited.remove(state_key)
-    return best_vector if best_vector is not None else _eval_scores(state), best_move
+    return best_vector if best_vector is not None else _evaluate_scores(state), best_move
 
 
 def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) -> Tuple[str, str]:
@@ -214,7 +219,7 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
         return random_bot(board, player, visualize_tree)
 
     visited = set()
-    MAX_PLAY_DEPTH = 8  # 4 plies = 1 full round across 4 players (use 8 for 2 full rounds)
+    MAX_PLAY_DEPTH = 4 if visualize_tree else 8  # 4 plies = 1 full round across 4 players (use 8 for 2 full rounds)
 
     _, best_move = _maxn(
         state=start_state,
