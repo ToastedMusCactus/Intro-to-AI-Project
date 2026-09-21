@@ -13,6 +13,7 @@ Run:     python halma_pygame_4players.py
 """
 from typing import Dict, List, Optional, Tuple, Callable
 import pygame
+import traceback
 
 
 from halma import (
@@ -66,7 +67,7 @@ BOT_FUNCTIONS: Dict[int, Optional[BotFunction]] = {
     1: AI_Player_Team38,
     2: random_bot,
     3: random_bot,
-    4: random_bot,
+    4: random_bot
 }
 
 
@@ -180,6 +181,7 @@ class HalmaGame:
             # Student bot errors forfeit this turn, rather than stopping the game.
             print(f"Player {self.current_player} bot error: {type(error).__name__}: {error}")
             self.skip_turn("bot error (see console)")
+            traceback.print_exc()
             return
 
         print(f"Player {self.current_player}: {old_reference} -> {new_reference}")
