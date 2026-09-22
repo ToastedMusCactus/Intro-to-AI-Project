@@ -3,12 +3,19 @@ import random
 import heapq
 import os
 from typing import Dict, List, Tuple, Optional
-from PIL import Image, ImageDraw, ImageFont
-from typing import Dict, List, Tuple
-from PIL import Image, ImageDraw, ImageFont
+import graphviz
 from treelib import Tree
 
 from halma import check_legal_move, win_cells_all, random_bot, initial_pos
+
+# Constants required for the visualize function
+SEARCH_DEPTH = 2
+VIS_NODE_LIMIT = 300
+
+
+def _fmt(pos: Tuple[int, int]) -> str:
+    return f"{chr(ord('A') + pos[1])}{pos[0] + 1}"
+
 
 # Player move directions: either one-step or two-step jumps
 MOVE_DIRECTIONS = [
@@ -27,10 +34,8 @@ HEURISTIC_CACHE = {}
 
 
 def _heuristic(state: tuple, player: int) -> int:
-    """
-    Calculates the sum of Manhattan distances by assigning each of the player pieces
-    to unique winning cells to ensure the pieces do not go to the same cell
-    """
+    # Calculates the sum of Manhattan distances by assigning each of the player pieces
+    # to unique winning cells to ensure the pieces do not go to the same cell
 
     cache_key = (state, player)
     if cache_key in HEURISTIC_CACHE:
@@ -108,9 +113,8 @@ def _evaluate_scores(state: tuple) -> Tuple[int, int, int, int]:
 
 
 def _get_legal_moves(state: tuple, player: int):
-    """
-    Legal player moves: single-step and jump
-    """
+    # Legal player moves: single-step and jump
+    
     board = [list(row) for row in state]
     moves = []
 
@@ -139,7 +143,7 @@ def _apply_move(state: tuple, old_pos, new_pos, player: int) -> tuple:
 def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: int, visited: set,
     tree: Optional[Tree] = None, parent_id: Optional[str] = None, node_count: Optional[List[int]] = None,
 ) -> Tuple[Tuple[int, int, int, int], Optional[Tuple[Tuple[int, int], Tuple[int, int]]]]:
-    """Recursive Max^n search for 4 players with repeated position pruning & branch ordering."""
+    # Recursive Max^n search for 4 players with repeated position pruning & branch ordering
     if play_depth == max_play_depth:
         return _evaluate_scores(state), None
 
@@ -156,7 +160,6 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
         visited.remove(state_key)
         return scores, None
 
-    # Branch ordering: sort moves by heuristic score for current player
     win_cells = win_cells_all[current_player]
 
     scored_moves = []
@@ -197,6 +200,65 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
     return best_vector if best_vector is not None else _evaluate_scores(state), best_move
 
 
+def _visualize(state: tuple, player: int) -> None:
+    """
+    Build a search tree with treelib, then write it to Team38_Tree.png
+    by constructing the DOT source manually (avoids treelib's
+    to_graphviz() version quirks) and rendering it via graphviz.
+    """
+    tree = Tree()
+    tree.create_node("Start", "Start")
+
+    counter = [0]
+
+    def expand(state_now: tuple, player_now: int, parent_id: str, depth: int):
+        if depth == 0 or counter[0] >= VIS_NODE_LIMIT:
+            return
+        moves = _get_legal_moves(state_now, player_now)
+
+        def score(mv):
+            old_pos, new_pos = mv
+            ns = _apply_move(state_now, old_pos, new_pos, player_now)
+            return _heuristic(ns, player_now)
+
+        ordered = sorted(moves, key=score)[:5]
+
+        for old_pos, new_pos in ordered:
+            if counter[0] >= VIS_NODE_LIMIT:
+                return
+            counter[0] += 1
+            move_str = f"{_fmt(old_pos)}->{_fmt(new_pos)}"
+            node_id = f"n{counter[0]}_{move_str}"
+            tree.create_node(move_str, node_id, parent=parent_id)
+            ns = _apply_move(state_now, old_pos, new_pos, player_now)
+            expand(ns, player_now % 4 + 1, node_id, depth - 1)
+
+    expand(state, player, "Start", SEARCH_DEPTH)
+
+    # ---- Build DOT source manually ----
+    lines = ["digraph tree {", '    node [shape=circle, fontsize=10];']
+    for node in tree.all_nodes():
+        label = str(node.tag).replace('"', '\\"')
+        lines.append(f'    "{node.identifier}" [label="{label}"];')
+    for node in tree.all_nodes():
+        if node.bpointer is not None:
+            lines.append(f'    "{node.bpointer}" -> "{node.identifier}";')
+    lines.append("}")
+    dot_string = "\n".join(lines)
+
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "Team38_Tree")
+
+    try:
+        src = graphviz.Source(dot_string)
+        src.render(output_path, format="png", cleanup=True)
+        print(f">>> SUCCESS: Team38_Tree.png saved to {output_path}.png <<<")
+    except Exception as e:
+        print(f"[Warning] Graphviz render failed: {e}")
+        print("Falling back to ASCII tree.")
+        tree.show()
+
+
 def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) -> Tuple[str, str]:
     # Clear cache at every turn
     HEURISTIC_CACHE.clear()
@@ -205,6 +267,7 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
         raise ValueError("Invalid board format: Must be a 5x5 grid.")
     if player not in [1, 2, 3, 4]:
         raise ValueError("Invalid player: Must be 1, 2, 3, or 4.")
+
 
     start_state = tuple(tuple(row) for row in board)
 
@@ -218,8 +281,17 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
     if not player_moves:
         return random_bot(board, player, visualize_tree)
 
+    win_cells = win_cells_all[player]
+    for old_pos, new_pos in player_moves:
+        next_state = _apply_move(start_state, old_pos, new_pos, player)
+        # This checks if any move immediately wins
+        if all(next_state[r][c] == player for r, c in win_cells):
+            old_ref = f"{chr(ord('A') + old_pos[1])}{old_pos[0] + 1}"
+            new_ref = f"{chr(ord('A') + new_pos[1])}{new_pos[0] + 1}"
+            return old_ref, new_ref
+
     visited = set()
-    MAX_PLAY_DEPTH = 4 if visualize_tree else 8  # 4 plies = 1 full round across 4 players (use 8 for 2 full rounds)
+    MAX_PLAY_DEPTH = 4 if visualize_tree else 8  # 4 = 1 full round across 4 players (use 8 for 2 full rounds)
 
     _, best_move = _maxn(
         state=start_state,
@@ -232,28 +304,8 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
         node_count = node_count if visualize_tree else None,
     )
 
-    if visualize_tree and tree is not None:
-        try:
-            font = ImageFont.load_default()
-            lines = []
-            for node_id in tree.expand_tree():
-                node = tree.get_node(node_id)
-                lines.append(f"{'  ' * tree.depth(node_id)}{node.tag}")
-
-            line_height = 18
-            image_width = max(320, max(len(line) for line in lines) * 8 + 20)
-            image = Image.new("RGB", (image_width, line_height * len(lines) + 20), "white")
-            draw = ImageDraw.Draw(image)
-            for index, line in enumerate(lines):
-                draw.text((10, 10 + index * line_height), line, fill="black", font=font)
-
-            output_path = os.path.join(os.path.dirname(__file__), "Team38 Tree.png")
-            image.save(output_path)
-            print("Tree exported successfully to Team38 Tree.png")
-
-        except Exception as e:
-            print(f"[Warning] Tree export failed ({e}). Rendering ASCII tree instead:")
-            tree.show()
+    if visualize_tree:
+        _visualize(start_state, player)
 
     if best_move is None:
         best_move = player_moves[0]
