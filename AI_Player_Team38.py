@@ -8,12 +8,13 @@ from treelib import Tree
 
 from halma import check_legal_move, win_cells_all, random_bot, initial_pos
 
-# Constants required for the visualize function
+# Visualization parameters
 SEARCH_DEPTH = 2
 VIS_NODE_LIMIT = 300
 
 
 def _fmt(pos: Tuple[int, int]) -> str:
+    """Helper function that converts (row, col) coordinates into the standard board notation (ex: A1)."""
     return f"{chr(ord('A') + pos[1])}{pos[0] + 1}"
 
 
@@ -64,7 +65,7 @@ def _heuristic(state: tuple, player: int) -> int:
     while len(unnoccupied_goals) < len(pieces_outside):
         unnoccupied_goals.append(win_cells[0])
 
-    def dist(p,w) -> int:
+    def dist(p, w) -> int:
         return abs(p[0] - w[0]) + abs(p[1] - w[1])
 
     n_outside = len(pieces_outside)
@@ -104,7 +105,7 @@ def _heuristic(state: tuple, player: int) -> int:
 
 
 def _evaluate_scores(state: tuple) -> Tuple[int, int, int, int]:
-    """Returns the "scores" of each player in a 4 element vector"""
+    #Returns the "scores" of each player in a 4 element vector
     scores = []
     for p in range(1, 5):
         # Higher score is better: 1000 minus distance to target
@@ -114,7 +115,6 @@ def _evaluate_scores(state: tuple) -> Tuple[int, int, int, int]:
 
 def _get_legal_moves(state: tuple, player: int):
     # Legal player moves: single-step and jump
-    
     board = [list(row) for row in state]
     moves = []
 
@@ -132,7 +132,7 @@ def _get_legal_moves(state: tuple, player: int):
 def _apply_move(state: tuple, old_pos, new_pos, player: int) -> tuple:
     if old_pos[0] < 0 or old_pos[0] > 4 or old_pos[1] < 0 or old_pos[1] > 4:
         print("Invalid starting position")
-        return None;
+        return None
 
     board = [list(row) for row in state]
     board[new_pos[0]][new_pos[1]] = player
@@ -147,6 +147,7 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
     if play_depth == max_play_depth:
         return _evaluate_scores(state), None
 
+    # Pruning repeated positions across identical states
     state_key = (state, current_player)
     if state_key in visited:
         return _evaluate_scores(state), None
@@ -160,30 +161,26 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
         visited.remove(state_key)
         return scores, None
 
-    win_cells = win_cells_all[current_player]
-
     scored_moves = []
     for m in moves:
-         
         next_state = _apply_move(state, m[0], m[1], current_player)
         score = 1000 - _heuristic(next_state, current_player)
         scored_moves.append((score, m[0], m[1], next_state))
 
-    scored_moves.sort(key = lambda x: x[0], reverse = True)
+    # Branch ordering: prioritize moves with superior local heuristic evaluations
+    scored_moves.sort(key=lambda x: x[0], reverse=True)
 
     p_idx = current_player - 1
-
     best_moves = scored_moves[:3]
 
     best_vector = None
     best_move = None
 
     for score, old_pos, new_pos, next_state in best_moves:
-
         node_id = None
-        if tree is not None and parent_id is not None and node_count is not None and node_count[0] < 300:
+        if tree is not None and parent_id is not None and node_count is not None and node_count[0] < VIS_NODE_LIMIT:
             node_count[0] += 1
-            move_str = f"P{current_player}: {chr(ord('A') + old_pos[1])}{old_pos[0] + 1}->{chr(ord('A') + new_pos[1])}{new_pos[0] + 1}"
+            move_str = f"P{current_player}: {_fmt(old_pos)}->{_fmt(new_pos)}"
             node_id = f"node_{node_count[0]}_{move_str}"
             tree.create_node(move_str, node_id, parent=parent_id)
 
@@ -193,6 +190,7 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
             best_vector = vector
             best_move = (old_pos, new_pos)
 
+            # Max^n Shallow Pruning -> Cuts off the remaining sibling branches if the maximum score is achieved
             if best_vector[p_idx] >= 1000:
                 break
 
@@ -201,11 +199,9 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
 
 
 def _visualize(state: tuple, player: int) -> None:
-    """
-    Build a search tree with treelib, then write it to Team38_Tree.png
-    by constructing the DOT source manually (avoids treelib's
-    to_graphviz() version quirks) and rendering it via graphviz.
-    """
+    # Build a search tree with treelib, then write it to Team38_Tree.png
+    # by constructing the DOT source manually and rendering it via graphviz.
+    
     tree = Tree()
     tree.create_node("Start", "Start")
 
@@ -231,23 +227,24 @@ def _visualize(state: tuple, player: int) -> None:
             node_id = f"n{counter[0]}_{move_str}"
             tree.create_node(move_str, node_id, parent=parent_id)
             ns = _apply_move(state_now, old_pos, new_pos, player_now)
-            expand(ns, player_now % 4 + 1, node_id, depth - 1)
+            expand(ns, (player_now % 4) + 1, node_id, depth - 1)
 
     expand(state, player, "Start", SEARCH_DEPTH)
 
-    # ---- Build DOT source manually ----
     lines = ["digraph tree {", '    node [shape=circle, fontsize=10];']
     for node in tree.all_nodes():
         label = str(node.tag).replace('"', '\\"')
         lines.append(f'    "{node.identifier}" [label="{label}"];')
+    
     for node in tree.all_nodes():
-        if node.bpointer is not None:
-            lines.append(f'    "{node.bpointer}" -> "{node.identifier}";')
+        parent_node = tree.parent(node.identifier)
+        if parent_node is not None:
+            lines.append(f'    "{parent_node.identifier}" -> "{node.identifier}";')
+            
     lines.append("}")
     dot_string = "\n".join(lines)
 
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "Team38_Tree")
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Team38_Tree")
 
     try:
         src = graphviz.Source(dot_string)
@@ -262,12 +259,12 @@ def _visualize(state: tuple, player: int) -> None:
 def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) -> Tuple[str, str]:
     # Clear cache at every turn
     HEURISTIC_CACHE.clear()
+
     # Input validation
     if not isinstance(board, list) or len(board) != 5 or not all(isinstance(r, list) and len(r) == 5 for r in board):
         raise ValueError("Invalid board format: Must be a 5x5 grid.")
     if player not in [1, 2, 3, 4]:
         raise ValueError("Invalid player: Must be 1, 2, 3, or 4.")
-
 
     start_state = tuple(tuple(row) for row in board)
 
@@ -284,24 +281,21 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
     win_cells = win_cells_all[player]
     for old_pos, new_pos in player_moves:
         next_state = _apply_move(start_state, old_pos, new_pos, player)
-        # This checks if any move immediately wins
         if all(next_state[r][c] == player for r, c in win_cells):
-            old_ref = f"{chr(ord('A') + old_pos[1])}{old_pos[0] + 1}"
-            new_ref = f"{chr(ord('A') + new_pos[1])}{new_pos[0] + 1}"
-            return old_ref, new_ref
+            return _fmt(old_pos), _fmt(new_pos)
 
     visited = set()
-    MAX_PLAY_DEPTH = 4 if visualize_tree else 8  # 4 = 1 full round across 4 players (use 8 for 2 full rounds)
+    MAX_PLAY_DEPTH = 4 if visualize_tree else 8
 
     _, best_move = _maxn(
         state=start_state,
-        current_player = player,
-        play_depth = 0,
-        max_play_depth = MAX_PLAY_DEPTH,
-        visited = visited,
-        tree = tree,
-        parent_id = "Start" if visualize_tree else None,
-        node_count = node_count if visualize_tree else None,
+        current_player=player,
+        play_depth=0,
+        max_play_depth=MAX_PLAY_DEPTH,
+        visited=visited,
+        tree=tree,
+        parent_id="Start" if visualize_tree else None,
+        node_count=node_count if visualize_tree else None,
     )
 
     if visualize_tree:
@@ -311,9 +305,7 @@ def AI_Player_Team38(board: List[List[int]], player: int, visualize_tree: bool) 
         best_move = player_moves[0]
 
     first_old, first_new = best_move
-    old_ref = f"{chr(ord('A') + first_old[1])}{first_old[0] + 1}"
-    new_ref = f"{chr(ord('A') + first_new[1])}{first_new[0] + 1}"
-    return old_ref, new_ref
+    return _fmt(first_old), _fmt(first_new)
 
 
 # Standalone test of the search algorithm
