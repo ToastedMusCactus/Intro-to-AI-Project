@@ -3,6 +3,8 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import balanced_accuracy_score
 import pandas as pd
 import numpy as np
 
@@ -29,53 +31,125 @@ class DryBeanDataset(Dataset):
 class BeanMLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, dropout_rate=0.0):
         super(BeanMLP, self).__init__()
-        # TODO: Define layers (Input -> Hidden -> Output)
-        # Remember to include Batch Normalization and Dropout if enabled
-        pass
+
+        # Input Layer -> Hidden Layer -> Output Layer
+        self.network = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),       # Batch Normalization
+            nn.ReLU(),                        # Activation function
+            nn.Dropout(dropout_rate),         # For Person B's regularization tests
+            nn.Linear(hidden_dim, output_dim)
+        )
+
 
     def forward(self, x):
-        # TODO: Define forward pass logic
-        pass
+        return self.network(x)
 
 
 # ==========================================
 # 3. CUSTOM LOSS FUNCTION
 # ==========================================
-def custom_loss_fn(outputs, targets):
+def custom_loss_function(outputs, targets):
     """
-    Custom loss function normalized by input values / batch size.
+    A Custom loss function that is normalized by the input values / batch size.
     """
-    # TODO: Implement manual loss calculation normalized by batch/input size
-    pass
+
+    # 1) Find the highest score in each row to ensure numerical stability and preventing overflow
+    max_scores = torch.max(outputs, dim = 1, keepdim = True)[0]
+
+    # 2) Shift the raw scores so that the max values in each row become 0
+    shifted_outputs = outputs - max_scores
+
+    # 3) Calculate e^(shifted_score) for each element
+    exp_outputs = torch.exp(shifted_outputs)
+
+    # 4) Sum exponentiated values across colums
+    sum_exp_per_row = torch.sum(exp_outputs, dim = 1, keepdim = True)
+
+    # 5) Calculate probabilites by dividing each score by the sum of each row (Softmax)
+    probabilities = exp_outputs / sum_exp_per_row
+
+    # 6) Pick the predicted probability for correct target class
+    row_indices = torch.arange(outputs.shape[0])
+    correct_class_probs = probabilities[row_indices, targets]
+
+    # 7) Find log of the correcrt probabilites, adding 1e-15 to ensure no log(0)
+    log_probs = torch.log(correct_class_probs + 1e-15)
+
+    # 8) Sum the log penalties, and turn negative
+    total_loss = -torch.sum(log_probs)
+
+    # 9) Return the normalized_loss --> total_loss / batch_size
+    return total_loss / outputs.shape[0]
 
 
 # ==========================================
 # 4. TRAINING & EVALUATION LOOPS
 # ==========================================
 def train_epoch(model, dataloader, optimizer, device):
+    # 1) Begin training mode and tracking total loss
     model.train()
-    running_loss = 0.0
+    total_loss = 0.0
+
     for X_batch, y_batch in dataloader:
+        # 2) Move the batch data into the device
         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+        # 3) Reset the stored gradients to 0
+        optimizer.zero_grad()
+
+        # 4) Get the raw model predictions
+        outputs = model(X_batch)
+
+        # 5) Calculate losses
+        loss = custom_loss_function(outputs, y_batch)
+
+        # 6) Compute the new loss gradients
+        loss.backward()
+
+        # 7) Updates the network weigths with the computed gradients
+        optimizer.step()
+
+        batch_size = X_batch.size(0)
+        total_loss = total_loss + (loss.item() * batch_size)
+
+    # 9) Return the average loss -> The accumulated oss / total number of samples
+    total_samples = len(dataloader.dataset)
         
-        # TODO: Zero gradients, forward pass, calculate custom loss, backward pass, step optimizer
-        
-    return running_loss
+    return total_loss / total_samples #Return average loss
 
 
 def evaluate(model, dataloader, device):
+    # 1) Set the model to evaluation mode and initialize prediction and target lists
     model.eval()
-    all_preds = []
-    all_targets = []
-    
-    with torch.no_grad():
-        for X_batch, y_batch in dataloader:
-            X_batch = X_batch.to(device)
-            # TODO: Get model predictions
-            pass
+    predictions = []
+    targets = []
 
-    # TODO: Calculate and return Balanced Accuracy Score
-    return 0.0
+    # 2) Turns off the gradient calculator engine to run faster and save memory
+    with torch.no_grad():
+
+        # 3) Loop through all batches in the dataloader
+        for X_batch, y_batch in dataloader:
+
+            # 4) Move the batch into the device
+            X_batch = X_batch.to(device)
+
+            # 5) Get the model output logits
+            outputs = model(X_batch)
+
+            # 6) Get the predicted class indexes sorted in a 1D shape
+            predicted_classes = torch.max(outputs, dim = 1, keepdim = False)[1]
+
+            # 7) Move to the Cpu, then convert to NumPy then append
+            predictions_numpy = predicted_classes.cpu().numpy()
+            predictions.extend(predictions_numpy)
+
+            targets_numpy = y_batch.cpu().numpy()
+            targets.extend(targets_numpy)
+
+    # 8) Return & Compute the balanced accuracy score
+    accurate_score = balanced_accuracy_score(targets, predictions)
+    return accurate_score
 
 
 # ==========================================
@@ -85,15 +159,105 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # TODO: Load train and test CSVs, apply feature scaling (StandardScaler)
-    # TRAIN_FILE = "dry_bean_train.csv"
-    # TEST_FILE  = "dry_bean_test.csv"
+    TRAIN_FILE = "dry_bean_train.csv"
+    TEST_FILE  = "dry_bean_test.csv"
 
-    # TODO: Perform Cross-Validation to determine best params
+    train_df = pd.read_csv(TRAIN_FILE)
+    test_df  = pd.read_csv(TEST_FILE)
 
-    # TODO: Save state_dict after final training
-    # torch.save(model.state_dict(), "mlp_model.pth")
+    # Separate features and labels
+    FEATURE_COLS = [c for c in train_df.columns if c != "Class"]
+    X_train_raw = train_df[FEATURE_COLS].values
+    X_test_raw  = test_df[FEATURE_COLS].values
 
-    # TODO: Generate test set predictions and save to 'network.csv'
-    # Required columns: keep original columns from dry_bean_test.csv + add "Target"
-    print("Template ready. Replace placeholders with implementation.")
+    # Create mapping for string labels to integers
+    classes = train_df["Class"].unique()
+    class_to_idx = {cls: i for i, cls in enumerate(classes)}
+    idx_to_class = {i: cls for cls, i in class_to_idx.items()}
+    y_train_raw = np.array([class_to_idx[cls] for cls in train_df["Class"]])
+
+    # Apply Feature Scaling
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_raw)
+    X_test_scaled  = scaler.transform(X_test_raw)
+
+    # Instantiate the Datasets
+    train_dataset_full = DryBeanDataset(X_train_scaled, y_train_raw)
+    test_dataset = DryBeanDataset(X_test_scaled)
+    
+    # ------------------------------------------
+    # MODEL INSTANTIATION, CV, & TRAINING (PERSON B)
+    # ------------------------------------------
+    # TODO: Wrap datasets in DataLoaders (e.g., DataLoader(train_dataset_full, batch_size=..., shuffle=True))
+    # TODO: Instantiate BeanMLP, optimizer, and run cross-validation / training loops
+    # TODO: Ensure the final trained model is saved to the variable 'model' before the export step below
+
+    # Instantiate Hyperparameters
+    INPUT_SIZE = X_train_scaled.shape[1]
+    NUMBER_OF_CLASSES = len(classes)
+    HIDDEN_SIZE = 128
+    BATCH_SIZE = 64
+    LEARNING_RATE = 0.001
+    EPOCHS = 30
+    WEIGHT_DECAY = 1e-4
+
+    val_size = int(0.2 * len(train_dataset_full))
+    train_size = len(train_dataset_full) - val_size
+
+    train_subset, val_subset = torch.utils.data.random_split(
+        train_dataset_full, 
+        [train_size, val_size],
+        generator=torch.Generator().manual_seed(42)
+    )
+
+    train_loader = DataLoader(train_subset, batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(val_subset, batch_size=BATCH_SIZE, shuffle=False)
+
+    model = BeanMLP(INPUT_SIZE, hidden_dim=HIDDEN_SIZE, output_dim=NUMBER_OF_CLASSES).to(device)
+
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=LEARNING_RATE, 
+        weight_decay=WEIGHT_DECAY
+    )
+
+    best_value_accuracy = 0.0
+
+    print("\nBeginning Training...")
+    for epoch in range(1, EPOCHS + 1):
+        training_loss = train_epoch(model, train_loader, optimizer, device)
+        value_accuracy = evaluate(model, val_loader, device)
+
+        print(f"Epoch {epoch:02d}/{EPOCHS:02d} | Train Loss: {training_loss:.4f} | Val Balanced Acc: {value_accuracy:.4f}")
+    
+        if value_accuracy > best_value_accuracy:
+            best_value_accuracy = value_accuracy
+            torch.save(model.state_dict(), "best_bean_mlp.pth")
+
+    print(f"\nTraining Completed -> Best Validation Balanced Accuracy: {best_value_accuracy:.4f}")
+
+    model.load_state_dict(torch.load("best_bean_mlp.pth"))
+    # ------------------------------------------
+    # CSV EXPORT (PERSON A)
+    # ------------------------------------------
+    
+    #TODO Person B: Uncomment this block once 'model' is fully trained and ready for inference
+    
+    model.eval()
+    with torch.no_grad():
+        X_test_tensor = torch.tensor(X_test_scaled, dtype=torch.float32).to(device)
+        test_outputs = model(X_test_tensor)
+        _, predicted_idx = torch.max(test_outputs, 1)
+        predicted_idx = predicted_idx.cpu().numpy()
+
+    # Map integers back to strings (e.g., 0 -> 'SEKER')
+    predicted_labels = [idx_to_class[idx] for idx in predicted_idx]
+
+    # Keep original columns and add "Target"
+    output_df = test_df.copy()
+    output_df["Target"] = predicted_labels
+    output_df.to_csv("network.csv", index=False)
+
+    print("\nWrote predictions to network.csv")
+    print(output_df.head())
+    
