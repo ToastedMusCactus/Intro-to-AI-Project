@@ -7,9 +7,10 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import balanced_accuracy_score
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 # ==========================================
-# 1. DATASET & DATALOADER SETUP
+# 1. DATASET SETUP (PERSON A)
 # ==========================================
 class DryBeanDataset(Dataset):
     def __init__(self, features, labels=None):
@@ -24,9 +25,8 @@ class DryBeanDataset(Dataset):
             return self.features[idx], self.labels[idx]
         return self.features[idx]
 
-
 # ==========================================
-# 2. NEURAL NETWORK ARCHITECTURE
+# 2. NEURAL NETWORK ARCHITECTURE (PERSON A)
 # ==========================================
 class BeanMLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, dropout_rate=0.0):
@@ -47,44 +47,18 @@ class BeanMLP(nn.Module):
 
 
 # ==========================================
-# 3. CUSTOM LOSS FUNCTION
+# 3. CUSTOM LOSS FUNCTION (PERSON B)
 # ==========================================
 def custom_loss_function(outputs, targets):
     """
     A Custom loss function that is normalized by the input values / batch size.
     """
-
-    # 1) Find the highest score in each row to ensure numerical stability and preventing overflow
-    max_scores = torch.max(outputs, dim = 1, keepdim = True)[0]
-
-    # 2) Shift the raw scores so that the max values in each row become 0
-    shifted_outputs = outputs - max_scores
-
-    # 3) Calculate e^(shifted_score) for each element
-    exp_outputs = torch.exp(shifted_outputs)
-
-    # 4) Sum exponentiated values across colums
-    sum_exp_per_row = torch.sum(exp_outputs, dim = 1, keepdim = True)
-
-    # 5) Calculate probabilites by dividing each score by the sum of each row (Softmax)
-    probabilities = exp_outputs / sum_exp_per_row
-
-    # 6) Pick the predicted probability for correct target class
-    row_indices = torch.arange(outputs.shape[0])
-    correct_class_probs = probabilities[row_indices, targets]
-
-    # 7) Find log of the correcrt probabilites, adding 1e-15 to ensure no log(0)
-    log_probs = torch.log(correct_class_probs + 1e-15)
-
-    # 8) Sum the log penalties, and turn negative
-    total_loss = -torch.sum(log_probs)
-
-    # 9) Return the normalized_loss --> total_loss / batch_size
-    return total_loss / outputs.shape[0]
+    # TODO: Implement manual loss calculation normalized by batch/input size
+    pass
 
 
 # ==========================================
-# 4. TRAINING & EVALUATION LOOPS
+# 4. TRAINING & EVALUATION LOOPS (PERSON B)
 # ==========================================
 def train_epoch(model, dataloader, optimizer, device):
     # 1) Begin training mode and tracking total loss
@@ -94,29 +68,10 @@ def train_epoch(model, dataloader, optimizer, device):
     for X_batch, y_batch in dataloader:
         # 2) Move the batch data into the device
         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-        # 3) Reset the stored gradients to 0
-        optimizer.zero_grad()
-
-        # 4) Get the raw model predictions
-        outputs = model(X_batch)
-
-        # 5) Calculate losses
-        loss = custom_loss_function(outputs, y_batch)
-
-        # 6) Compute the new loss gradients
-        loss.backward()
-
-        # 7) Updates the network weigths with the computed gradients
-        optimizer.step()
-
-        batch_size = X_batch.size(0)
-        total_loss = total_loss + (loss.item() * batch_size)
-
-    # 9) Return the average loss -> The accumulated oss / total number of samples
-    total_samples = len(dataloader.dataset)
         
-    return total_loss / total_samples #Return average loss
+        # TODO: Zero gradients, forward pass, calculate custom loss, backward pass, step optimizer
+        
+    return running_loss
 
 
 def evaluate(model, dataloader, device):
@@ -133,23 +88,11 @@ def evaluate(model, dataloader, device):
 
             # 4) Move the batch into the device
             X_batch = X_batch.to(device)
+            # TODO: Get model predictions
+            pass
 
-            # 5) Get the model output logits
-            outputs = model(X_batch)
-
-            # 6) Get the predicted class indexes sorted in a 1D shape
-            predicted_classes = torch.max(outputs, dim = 1, keepdim = False)[1]
-
-            # 7) Move to the Cpu, then convert to NumPy then append
-            predictions_numpy = predicted_classes.cpu().numpy()
-            predictions.extend(predictions_numpy)
-
-            targets_numpy = y_batch.cpu().numpy()
-            targets.extend(targets_numpy)
-
-    # 8) Return & Compute the balanced accuracy score
-    accurate_score = balanced_accuracy_score(targets, predictions)
-    return accurate_score
+    # TODO: Calculate and return Balanced Accuracy Score
+    return 0.0
 
 
 # ==========================================
@@ -188,9 +131,7 @@ if __name__ == "__main__":
     # ------------------------------------------
     # MODEL INSTANTIATION, CV, & TRAINING (PERSON B)
     # ------------------------------------------
-    # TODO: Wrap datasets in DataLoaders (e.g., DataLoader(train_dataset_full, batch_size=..., shuffle=True))
-    # TODO: Instantiate BeanMLP, optimizer, and run cross-validation / training loops
-    # TODO: Ensure the final trained model is saved to the variable 'model' before the export step below
+
 
     # Instantiate Hyperparameters
     INPUT_SIZE = X_train_scaled.shape[1]
