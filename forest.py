@@ -1,4 +1,4 @@
-# Cross validation Balance Accuracy = 92.30%
+# Cross validation Balance Accuracy = 93.43%
 import numpy as np
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
@@ -111,24 +111,22 @@ class MyRandomForest:
             X_boot = X[sample_idx]
             y_boot = y[sample_idx]
 
-            feat_idx = rng.choice(n_features, size=self.n_features_per_tree,
-                                  replace=False)
-
             tree = DecisionTreeClassifier(
                 criterion="gini",
                 max_depth=self.max_depth,
                 min_samples_split=self.min_samples_split,
+                max_features=self.n_features_per_tree,
                 random_state=int(rng.integers(0, 1_000_000)),
             )
-            tree.fit(X_boot[:, feat_idx], y_boot)
-            self.trees.append((tree, feat_idx))
+            tree.fit(X_boot, y_boot)
+            self.trees.append(tree)
 
         return self
 
     def predict(self, X):
         all_preds = np.zeros((len(self.trees), X.shape[0]), dtype=object)
-        for i, (tree, feat_idx) in enumerate(self.trees):
-            all_preds[i] = tree.predict(X[:, feat_idx])
+        for i, tree in enumerate(self.trees):
+            all_preds[i] = tree.predict(X)
 
         final = []
         for col in range(X.shape[0]):

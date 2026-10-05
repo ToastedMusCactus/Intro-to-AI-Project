@@ -199,8 +199,7 @@ def _maxn(state: tuple, current_player: int, play_depth: int, max_play_depth: in
 
 
 def _visualize(state: tuple, player: int) -> None:
-    # Build a search tree with treelib, then write it to Team38_Tree.png
-    # by constructing the DOT source manually and rendering it via graphviz.
+    # Builds a search tree with treelib, then writes it to Team38_Tree.png
     
     tree = Tree()
     tree.create_node("Start", "Start")
