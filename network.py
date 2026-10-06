@@ -8,9 +8,6 @@ from sklearn.metrics import balanced_accuracy_score
 import pandas as pd
 import numpy as np
 
-# ==========================================
-# 1. DATASET & DATALOADER SETUP
-# ==========================================
 class DryBeanDataset(Dataset):
     def __init__(self, features, labels=None):
         self.features = torch.tensor(features, dtype=torch.float32)
@@ -25,9 +22,6 @@ class DryBeanDataset(Dataset):
         return self.features[idx]
 
 
-# ==========================================
-# 2. NEURAL NETWORK ARCHITECTURE
-# ==========================================
 class BeanMLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, dropout_rate=0.0):
         super(BeanMLP, self).__init__()
@@ -35,9 +29,9 @@ class BeanMLP(nn.Module):
         # Input Layer -> Hidden Layer -> Output Layer
         self.network = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),       # Batch Normalization
-            nn.ReLU(),                        # Activation function
-            nn.Dropout(dropout_rate),         # For Person B's regularization tests
+            nn.BatchNorm1d(hidden_dim),       
+            nn.ReLU(),                        
+            nn.Dropout(dropout_rate),         
             nn.Linear(hidden_dim, output_dim)
         )
 
@@ -46,9 +40,6 @@ class BeanMLP(nn.Module):
         return self.network(x)
 
 
-# ==========================================
-# 3. CUSTOM LOSS FUNCTION
-# ==========================================
 def custom_loss_function(outputs, targets):
     """
     A Custom loss function that is normalized by the input values / batch size.
@@ -83,9 +74,7 @@ def custom_loss_function(outputs, targets):
     return total_loss / outputs.shape[0]
 
 
-# ==========================================
-# 4. TRAINING & EVALUATION LOOPS
-# ==========================================
+
 def train_epoch(model, dataloader, optimizer, device):
     # 1) Begin training mode and tracking total loss
     model.train()
@@ -152,9 +141,7 @@ def evaluate(model, dataloader, device):
     return accurate_score
 
 
-# ==========================================
-# 5. MAIN EXECUTION & INFERENCE
-# ==========================================
+
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -185,12 +172,6 @@ if __name__ == "__main__":
     train_dataset_full = DryBeanDataset(X_train_scaled, y_train_raw)
     test_dataset = DryBeanDataset(X_test_scaled)
     
-    # ------------------------------------------
-    # MODEL INSTANTIATION, CV, & TRAINING (PERSON B)
-    # ------------------------------------------
-    # TODO: Wrap datasets in DataLoaders (e.g., DataLoader(train_dataset_full, batch_size=..., shuffle=True))
-    # TODO: Instantiate BeanMLP, optimizer, and run cross-validation / training loops
-    # TODO: Ensure the final trained model is saved to the variable 'model' before the export step below
 
     # Instantiate Hyperparameters
     INPUT_SIZE = X_train_scaled.shape[1]
@@ -237,11 +218,7 @@ if __name__ == "__main__":
     print(f"\nTraining Completed -> Best Validation Balanced Accuracy: {best_value_accuracy:.4f}")
 
     model.load_state_dict(torch.load("best_bean_mlp.pth"))
-    # ------------------------------------------
-    # CSV EXPORT (PERSON A)
-    # ------------------------------------------
-    
-    #TODO Person B: Uncomment this block once 'model' is fully trained and ready for inference
+ 
     
     model.eval()
     with torch.no_grad():
